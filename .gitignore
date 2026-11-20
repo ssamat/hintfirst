@@ -8,3 +8,5 @@ results/
 .pypdf_pkg/
 __pycache__/
 .pytest_cache/
+# local recording notes
+DEMO_SCRIPT*.md
