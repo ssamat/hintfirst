@@ -475,6 +475,21 @@ def test_practice_does_not_duplicate_assessments():
     assert not pairs, [(p["id"], a.get("id"), round(s, 2)) for p, a, s in pairs]
 
 
+def test_assessments_are_well_formed_and_cover_the_objectives():
+    items = T.load_items(T.DATA / "assessments.json")
+    t = T.Tutor(T.DATA / "unit.md")
+    assert 8 <= len(items) <= 12 and len({i["id"] for i in items}) == len(items)
+    for i in items:
+        assert len(i["options"]) == 4 and 0 <= i["answer_index"] < 4, i["id"]
+        assert t.chunk_at(i["source_paragraph"]), i["id"]
+    # every learning objective in the chapter (3 + 2 + 3 + 3) has at least one item
+    assert len({i["outcome"] for i in items}) == 11
+
+
+def test_practice_answers_verified():
+    assert all(i["answer_verified"] for i in T.load_items(T.DATA / "practice.json"))
+
+
 # ── Calibration ───────────────────────────────────────────────────────────────
 def test_calibration_flags_overconfidence():
     cal = T.calibration([

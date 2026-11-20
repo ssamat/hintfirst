@@ -6,9 +6,11 @@ between the "Review Questions" and "Critical Thinking Questions" headings. Each 
 matched to the section and paragraph that support it with the tutor's own retriever
 (query = question stem + correct option).
 
-This PDF has no answer key, so answers come from PROPOSED_ANSWERS below (read off the
-chapter text) and are written with "answer_verified": false until someone confirms
-them against the instructor answer key.
+This PDF has no answer key (the official one is in OpenStax's instructor resources), so
+answers come from PROPOSED_ANSWERS below. Each one is verified against the chapter: the
+correct option is stated in its source paragraph (or, for rq4, in Table 6.1), and Gemini,
+given only that paragraph, picks the same option (audit.py, section 1). Verified items are
+written with "answer_verified": true.
 
 Items that duplicate a pre/post-test item in data/assessments.json are dropped.
 
@@ -33,9 +35,15 @@ PROPOSED_ANSWERS = {
     1: "c", 2: "b", 3: "a", 4: "d", 5: "b", 6: "d", 7: "a", 8: "b",
     9: "d", 10: "b", 11: "a", 12: "b", 13: "b", 14: "d", 15: "a", 16: "c",
 }
-VERIFIED = set()   # add question numbers here once checked against the answer key
+# All 16 checked against the chapter text on 2026-11-20 (see docstring); 16/16 also agree with
+# Gemini's paragraph-only pick. Re-check any item whose question, options, or source change.
+VERIFIED = set(range(1, 17))
 # Hand-checked fixes where the retriever's best paragraph doesn't hold the answer
-SOURCE_OVERRIDES = {7: "6.2 ¶18"}   # retriever picked the CS definition; ¶18 defines extinction
+SOURCE_OVERRIDES = {
+    4: "6.2 ¶6",    # the answer is in Table 6.1 (dropped); ¶6: the neutral stimulus comes "immediately before"
+    7: "6.2 ¶18",   # retriever picked the CS definition; ¶18 defines extinction
+    13: "6.4 ¶1",   # ¶6 lists kinds of models; ¶1 says the people imitated "are called models"
+}
 # First hint for each question: the distinction it turns on, worded as a question, never the answer
 KEY_DISTINCTIONS = {
     1: "Which of these does a person have to be taught, and which happens without any teaching?",

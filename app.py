@@ -41,6 +41,7 @@ CITE_ROUTER = components.declare_component("cite_router", path=str(T.Path(__file
 UNIT_PATH = T.DATA / "unit.md" if (T.DATA / "unit.md").exists() else T.DATA / "sample_unit.md"
 IS_SAMPLE = UNIT_PATH.name == "sample_unit.md"
 PRACTICE  = T.load_items(T.DATA / "practice.json")
+ASSESSMENTS = T.load_items(T.DATA / "assessments.json")   # pre/post-test items; never shown to the tutor
 LOG_PATH  = T.DATA / "logs.csv"
 LOG_FIELDS = [
     "time_utc", "session", "section", "paragraph", "action", "practice_id", "question",
@@ -56,6 +57,9 @@ SECTIONS  = [
 ]
 SEC_IDS = [s[0] for s in SECTIONS]
 PANELS  = ["Ask the reading", "Practice"]
+VIEWS   = ["Study", "Pre-test", "Post-test"]
+TESTS   = {"Pre-test": "pre", "Post-test": "post"}
+DONT_KNOW = "I don't know yet"   # counted as wrong; better than a guess for measuring what was learned
 LADDER  = ["Hint", "Bigger hint", "Worked answer"]
 # After a wrong first answer, how far practice points to the source paragraph. The support fades
 # as the learner finishes practice sections: highlight it, then name it, then only the section.
@@ -708,6 +712,96 @@ def render_calibration(sec: str, cal: dict):
             st.markdown("Your confidence matched your answers well. That's a useful skill.")
 
 
+# ── Pre-test / post-test ──────────────────────────────────────────────────────
+def set_view(view: str):
+    st.session_state.view = view
+
+
+def go_study(sec: str, para: int):
+    """From a post-test result back to the paragraph that answers it."""
+    st.session_state.view = VIEWS[0]
+    go_to(sec, para)
+
+
+def test_items(kind: str) -> list[dict]:
+    """The same items for both tests, with question and option order shuffled per session and
+    test, so the post-test isn't a replay of the pre-test. "I don't know yet" always comes last."""
+    rng = random.Random(f"{ss.session}{kind}")
+    out = []
+    for it in rng.sample(ASSESSMENTS, len(ASSESSMENTS)):
+        order = rng.sample(range(len(it["options"])), len(it["options"]))
+        out.append(dict(it, options=[it["options"][i] for i in order] + [DONT_KNOW],
+                        answer_index=order.index(it["answer_index"])))
+    return out
+
+
+def submit_test(kind: str, items: list[dict]):
+    results = {}
+    for it in items:
+        pick = it["options"].index(ss[f"{kind}_{it['id']}"])
+        results[it["id"]] = None if it["options"][pick] == DONT_KNOW else pick == it["answer_index"]
+        log("test", it["question"], action=f"{kind}test", practice_id=it["id"],
+            check_correct={True: "y", False: "n", None: "?"}[results[it["id"]]])
+    score = sum(bool(r) for r in results.values())
+    ss.tests[kind] = dict(score=score, n=len(items), results=results)
+    log("test", f"({kind}-test score)", action=f"{kind}test_score",
+        note=f"{score}/{len(items)} right, {sum(r is None for r in results.values())} don't know")
+
+
+def render_test(kind: str):
+    """A tutor-free test: no reading, chat, or hints on screen while it is open."""
+    items = test_items(kind)
+    st.markdown(f"### {'Pre-test' if kind == 'pre' else 'Post-test'}")
+    if kind in ss.tests:
+        render_test_result(kind, items)
+        return
+    if kind == "pre":
+        st.markdown(f"{len(items)} questions on the whole chapter, about 5 minutes. It's fine not to know "
+                    f"these yet: this is your starting point, so pick **{DONT_KNOW}** rather than guess. "
+                    "Answers stay hidden afterwards, so the post-test is a fair comparison.")
+    else:
+        st.markdown(f"The same {len(items)} ideas as the pre-test, in a new order. You've finished "
+                    f"{len(ss.done)} of {len(SECTIONS)} sections"
+                    + ("." if len(ss.done) == len(SECTIONS) else "; it works best after all of them."))
+    st.caption("The reading and the tutor are hidden while the test is open.")
+    for n, it in enumerate(items, 1):
+        with st.container(border=True):
+            st.caption(f"Question {n} of {len(items)}")
+            st.radio(it["question"], it["options"], index=None, key=f"{kind}_{it['id']}")
+    answered = sum(ss.get(f"{kind}_{it['id']}") is not None for it in items)
+    if st.button("Submit", key=f"{kind}_submit", type="primary", disabled=answered < len(items)):
+        submit_test(kind, items)
+        st.rerun()
+    if answered < len(items):
+        st.caption(f"{answered} of {len(items)} answered. Submit opens when all are answered.")
+
+
+def render_test_result(kind: str, items: list[dict]):
+    r = ss.tests[kind]
+    st.markdown(f"You got **{r['score']} of {r['n']}**.")
+    if kind == "pre":
+        st.markdown("That's your starting point. The answers stay hidden until you take the post-test.")
+        st.button("Start reading", key="pre_to_study", type="primary", on_click=set_view, args=(VIEWS[0],))
+        return
+    pre = ss.tests.get("pre")
+    if pre:
+        change = r["score"] - pre["score"]
+        st.markdown(f"On the pre-test you got **{pre['score']} of {pre['n']}**, so that's "
+                    f"**{change:+d}**." + (" Nice progress." if change > 0 else ""))
+    missed = [it for it in items if not r["results"][it["id"]]]
+    if not missed:
+        st.markdown("Every question right.")
+        return
+    st.markdown("**Worth another look**")
+    for it in missed:
+        src = tutor.chunk_at(it["source_paragraph"])
+        with st.container(border=True):
+            st.markdown(f"**{it['question']}**")
+            st.caption(f"Answer: {it['options'][it['answer_index']]} · {it['outcome']}")
+            st.button(f"Reread {src.para_label}", key=f"post_go_{it['id']}",
+                      on_click=go_study, args=(src.section_id, src.para_num))
+
+
 @st.cache_resource
 def load_tutor(live: bool):
     gen, model = None, ""
@@ -753,6 +847,8 @@ ss.setdefault("reviews",        {})
 ss.setdefault("reviewed",       set())
 ss.setdefault("prefs",          {})
 ss.setdefault("ai_uses",        0)
+ss.setdefault("tests",          {})
+ss.setdefault("view",           VIEWS[0])
 
 # ── Admin sidebar (learners get no sidebar) ───────────────────────────────────
 if admin:
@@ -769,7 +865,7 @@ if admin:
         if st.button("Clear session"):
             ss.turns, ss.practice, ss.done, ss.section_stats, ss.focus = {}, {}, set(), {}, None
             ss.notes, ss.cal_shown, ss.reviews, ss.reviewed = [], set(), {}, set()
-            ss.ai_uses = 0
+            ss.ai_uses, ss.tests, ss.view = 0, {}, VIEWS[0]
             st.rerun()
         st.divider()
         st.subheader("Per-section metrics")
@@ -785,6 +881,8 @@ if admin:
                 "hints": s["hints"], "worked": s["worked"],
             })
         st.dataframe(rows, hide_index=True)
+        if ss.tests:
+            st.caption("**Tests:** " + " · ".join(f"{k}-test {t['score']}/{t['n']}" for k, t in ss.tests.items()))
         if ss.reflection:
             st.caption("**Reflections**")
             for sid, txt in ss.reflection.items():
@@ -810,7 +908,11 @@ if ss.consent is None:
             "so please don't type personal details.",
             value=False, key="consent_check",
         )
-        if st.button("Start", type="primary"):
+        if ASSESSMENTS and st.button(f"Take the {len(ASSESSMENTS)}-question pre-test first (about 5 minutes)",
+                                     key="start_pretest", type="primary"):
+            ss.consent, ss.view = consent_val, "Pre-test"
+            st.rerun()
+        if st.button("Start reading", key="start", type="secondary" if ASSESSMENTS else "primary"):
             ss.consent = consent_val
             st.rerun()
     st.stop()
@@ -825,6 +927,13 @@ if cite and cite.get("n") != ss.cite_n:
         go_to(cite["sec"], cite["para"])
         log(cite["sec"], f"(citation link ¶{cite['para']})", action="cite_link",
             paragraph=f"{cite['sec']} ¶{cite['para']}")
+
+# Pre-test and post-test are their own views, so the reading and the tutor are out of reach
+if ASSESSMENTS:
+    view = st.radio("View", VIEWS, key="view", horizontal=True, label_visibility="collapsed")
+    if view != VIEWS[0]:
+        render_test(TESTS[view])
+        st.stop()
 
 sec_id    = ss.active_section
 sec_idx   = SEC_IDS.index(sec_id)
@@ -910,6 +1019,10 @@ with col_read:
 
 # ━━━━ RIGHT: ask the reading / practice ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 with col_tutor:
+    if ASSESSMENTS and len(ss.done) == len(SECTIONS) and "post" not in ss.tests:
+        with st.container(border=True):
+            st.markdown("You've finished all four sections. Ready to see how much you've learned?")
+            st.button("Take the post-test", key="to_post", type="primary", on_click=set_view, args=("Post-test",))
     if over_limit:
         st.info(f"You've used this session's {AI_LIMIT} AI answers. The tutor still works: "
                 "from here on, answers and hints quote the reading directly.")

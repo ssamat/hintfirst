@@ -86,7 +86,7 @@ def app_no_key(monkeypatch, restore_logs):
 def start(at, consent=False):
     if consent:
         at.checkbox(key="consent_check").check()
-    at.button[0].click().run()
+    [b for b in at.button if b.key == "start"][0].click().run()
     assert not at.exception
     return at
 
@@ -334,6 +334,41 @@ def test_session_ai_limit_falls_back_to_reading(monkeypatch, restore_logs):
     assert len(CALLS) == n                                       # past the limit: no API calls
     assert re.search(r"\[6\.\d ¶\d+\]", last_reply(at))           # still a cited answer
     assert "this session's 1 AI answers" in at.info[0].value
+
+
+def answer_test(at, kind, right):
+    """Answer every item of a test: the first `right` correctly, the rest "I don't know yet"."""
+    for n, r in enumerate([r for r in at.radio if r.key and r.key.startswith(f"{kind}_")]):
+        item = next(i for i in T.load_items(T.DATA / "assessments.json") if f"{kind}_{i['id']}" == r.key)
+        r.set_value(item["options"][item["answer_index"]] if n < right else "I don't know yet")
+    at.run()
+
+
+def test_pre_and_post_test(app):
+    at = app
+    click(at, "start_pretest")
+    assert at.radio(key="view").value == "Pre-test"
+    assert not at.chat_input and not any('class="reading' in t for t in texts(at))   # tutor-free
+    radios = [r for r in at.radio if r.key.startswith("pre_")]
+    assert len(radios) == 12 and radios[0].options[-1] == "I don't know yet"
+    assert [b for b in at.button if b.key == "pre_submit"][-1].disabled      # all must be answered
+    answer_test(at, "pre", right=3)
+    click(at, "pre_submit")
+    assert any("You got **3 of 12**" in t for t in texts(at))
+    assert not any("Answer:" in c.value for c in at.caption)               # pre-test hides answers
+
+    click(at, "pre_to_study")
+    assert at.chat_input                                                    # back to the reading
+    at.radio(key="view").set_value("Post-test").run()
+    post = [r for r in at.radio if r.key.startswith("post_")]
+    assert [r.label for r in post] != [r.label for r in radios]            # new order
+    answer_test(at, "post", right=10)
+    click(at, "post_submit")
+    assert any("You got **10 of 12**" in t for t in texts(at)) and any("**+7**" in t for t in texts(at))
+    go = next(b for b in at.button if b.key and b.key.startswith("post_go_"))
+    go.click().run()
+    assert at.radio(key="view").value == "Study"
+    assert any('class="reading hl"' in t for t in texts(at))                # the paragraph is highlighted
 
 
 # ── no API key ────────────────────────────────────────────────────────────────
