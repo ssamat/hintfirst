@@ -1,0 +1,258 @@
+[
+  {
+    "id": "rq1",
+    "section": "6.1",
+    "question": "Which of the following is an example of a reflex that occurs at some point in the development of a human being?",
+    "options": [
+      "child riding a bike",
+      "teen socializing",
+      "infant sucking on a nipple",
+      "toddler walking"
+    ],
+    "answer_index": 2,
+    "source_paragraph": "6.1 ¶2",
+    "distinction": "Which of these does a person have to be taught, and which happens without any teaching?",
+    "origin": "book",
+    "answer_verified": false
+  },
+  {
+    "id": "rq2",
+    "section": "6.1",
+    "question": "Learning is best defined as a relatively permanent change in behavior that ________.",
+    "options": [
+      "is innate",
+      "occurs as a result of experience",
+      "is found only in humans",
+      "occurs by observing others"
+    ],
+    "answer_index": 1,
+    "source_paragraph": "6.1 ¶2",
+    "distinction": "Is learning something you are born with, or something that comes from what happens to you?",
+    "origin": "book",
+    "answer_verified": false
+  },
+  {
+    "id": "rq3",
+    "section": "6.3",
+    "question": "Two forms of associative learning are ________ and ________.",
+    "options": [
+      "classical conditioning; operant conditioning",
+      "classical conditioning; Pavlovian conditioning",
+      "operant conditioning; observational learning",
+      "operant conditioning; learning conditioning"
+    ],
+    "answer_index": 0,
+    "source_paragraph": "6.3 ¶1",
+    "distinction": "Which two kinds of learning work by connecting things: a stimulus with a stimulus, or a behavior with its consequence?",
+    "origin": "book",
+    "answer_verified": false
+  },
+  {
+    "id": "rq4",
+    "section": "6.2",
+    "question": "In ________ the stimulus or experience occurs before the behavior and then gets paired with the behavior.",
+    "options": [
+      "associative learning",
+      "observational learning",
+      "operant conditioning",
+      "classical conditioning"
+    ],
+    "answer_index": 3,
+    "source_paragraph": "6.2 ¶7",
+    "distinction": "Does the stimulus come before the behavior or after it?",
+    "origin": "book",
+    "answer_verified": false
+  },
+  {
+    "id": "rq5",
+    "section": "6.2",
+    "question": "A stimulus that does not initially elicit a response in an organism is a(n) ________.",
+    "options": [
+      "unconditioned stimulus",
+      "neutral stimulus",
+      "conditioned stimulus",
+      "unconditioned response"
+    ],
+    "answer_index": 1,
+    "source_paragraph": "6.2 ¶6",
+    "distinction": "Before any conditioning, does this stimulus cause a response or not?",
+    "origin": "book",
+    "answer_verified": false
+  },
+  {
+    "id": "rq6",
+    "section": "6.2",
+    "question": "In Watson and Rayner’s experiments, Little Albert was conditioned to fear a white rat, and then he began to be afraid of other furry white objects. This demonstrates ________.",
+    "options": [
+      "higher order conditioning",
+      "acquisition",
+      "stimulus discrimination",
+      "stimulus generalization"
+    ],
+    "answer_index": 3,
+    "source_paragraph": "6.2 ¶25",
+    "distinction": "Is Albert reacting to things that are similar, or telling different things apart?",
+    "origin": "book",
+    "answer_verified": false
+  },
+  {
+    "id": "rq7",
+    "section": "6.2",
+    "question": "Extinction occurs when ________.",
+    "options": [
+      "the conditioned stimulus is presented repeatedly without being paired with an unconditioned stimulus",
+      "the unconditioned stimulus is presented repeatedly without being paired with a conditioned stimulus",
+      "the neutral stimulus is presented repeatedly without being paired with an unconditioned stimulus",
+      "the neutral stimulus is presented repeatedly without being paired with a conditioned stimulus"
+    ],
+    "answer_index": 0,
+    "source_paragraph": "6.2 ¶18",
+    "distinction": "Which stimulus keeps showing up, and which one stops coming with it?",
+    "origin": "book",
+    "answer_verified": false
+  },
+  {
+    "id": "rq8",
+    "section": "6.2",
+    "question": "In Pavlov’s work with dogs, the psychic secretions were ________.",
+    "options": [
+      "unconditioned responses",
+      "conditioned responses",
+      "unconditioned stimuli",
+      "conditioned stimuli"
+    ],
+    "answer_index": 1,
+    "source_paragraph": "6.2 ¶4",
+    "distinction": "Did the dogs salivate from an unlearned reflex, or from something they learned to expect?",
+    "origin": "book",
+    "answer_verified": false
+  },
+  {
+    "id": "rq9",
+    "section": "6.3",
+    "question": "________ is when you take away a pleasant stimulus to stop a behavior.",
+    "options": [
+      "positive reinforcement",
+      "negative reinforcement",
+      "positive punishment",
+      "negative punishment"
+    ],
+    "answer_index": 3,
+    "source_paragraph": "6.3 ¶8",
+    "distinction": "Is something being added or taken away, and is the goal to increase or decrease the behavior?",
+    "origin": "book",
+    "answer_verified": false
+  },
+  {
+    "id": "rq10",
+    "section": "6.3",
+    "question": "Which of the following is not an example of a primary reinforcer?",
+    "options": [
+      "food",
+      "money",
+      "water",
+      "sex"
+    ],
+    "answer_index": 1,
+    "source_paragraph": "6.3 ¶17",
+    "distinction": "Which of these meets a biological need on its own, and which matters only for what it can get you?",
+    "origin": "book",
+    "answer_verified": false
+  },
+  {
+    "id": "rq11",
+    "section": "6.3",
+    "question": "Rewarding successive approximations toward a target behavior is ________.",
+    "options": [
+      "shaping",
+      "extinction",
+      "positive reinforcement",
+      "negative reinforcement"
+    ],
+    "answer_index": 0,
+    "source_paragraph": "6.3 ¶11",
+    "distinction": "Is the behavior rewarded all at once, or step by step as it gets closer to the goal?",
+    "origin": "book",
+    "answer_verified": false
+  },
+  {
+    "id": "rq12",
+    "section": "6.3",
+    "question": "Slot machines reward gamblers with money according to which reinforcement schedule?",
+    "options": [
+      "fixed ratio",
+      "variable ratio",
+      "fixed interval",
+      "variable interval"
+    ],
+    "answer_index": 1,
+    "source_paragraph": "6.3 ¶25",
+    "distinction": "Is the payout based on the number of plays or on time, and is it predictable or not?",
+    "origin": "book",
+    "answer_verified": false
+  },
+  {
+    "id": "rq13",
+    "section": "6.4",
+    "question": "The person who performs a behavior that serves as an example is called a ________.",
+    "options": [
+      "teacher",
+      "model",
+      "instructor",
+      "coach"
+    ],
+    "answer_index": 1,
+    "source_paragraph": "6.4 ¶6",
+    "distinction": "What does the chapter call the person being watched, as opposed to the person watching?",
+    "origin": "book",
+    "answer_verified": false
+  },
+  {
+    "id": "rq14",
+    "section": "6.4",
+    "question": "In Bandura’s Bobo doll study, when the children who watched the aggressive model were placed in a room with the doll and other toys, they ________.",
+    "options": [
+      "ignored the doll",
+      "played nicely with the doll",
+      "played with tinker toys",
+      "kicked and threw the doll"
+    ],
+    "answer_index": 3,
+    "source_paragraph": "6.4 ¶9",
+    "distinction": "Did the children copy what they saw, or do something different from it?",
+    "origin": "book",
+    "answer_verified": false
+  },
+  {
+    "id": "rq15",
+    "section": "6.4",
+    "question": "Which is the correct order of steps in the modeling process?",
+    "options": [
+      "attention, retention, reproduction, motivation",
+      "motivation, attention, reproduction, retention",
+      "attention, motivation, retention, reproduction",
+      "motivation, attention, retention, reproduction"
+    ],
+    "answer_index": 0,
+    "source_paragraph": "6.4 ¶8",
+    "distinction": "What has to happen first before you can remember, repeat, or want to repeat a behavior?",
+    "origin": "book",
+    "answer_verified": false
+  },
+  {
+    "id": "rq16",
+    "section": "6.4",
+    "question": "Who proposed observational learning?",
+    "options": [
+      "Ivan Pavlov",
+      "John Watson",
+      "Albert Bandura",
+      "B. F. Skinner"
+    ],
+    "answer_index": 2,
+    "source_paragraph": "6.4 ¶4",
+    "distinction": "Which researcher in this section studied learning by watching others, rather than by rewards or paired stimuli?",
+    "origin": "book",
+    "answer_verified": false
+  }
+]

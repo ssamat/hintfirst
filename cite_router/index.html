@@ -1,0 +1,21 @@
+<!doctype html>
+<html><body><script>
+// Hidden Streamlit component: turns clicks on citation links (<a class="cite">) in the
+// page into a component value {sec, para, n}, so the app can jump to that paragraph.
+function send(type, extra) {
+  window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, extra), "*");
+}
+const doc = window.parent.document;
+if (doc.__citeHandler) doc.removeEventListener("click", doc.__citeHandler, true);
+doc.__citeHandler = (e) => {
+  const a = e.target.closest && e.target.closest("a.cite");
+  if (!a) return;
+  e.preventDefault();
+  e.stopPropagation();
+  send("streamlit:setComponentValue", {
+    value: {sec: a.dataset.sec, para: Number(a.dataset.para), n: Date.now()}, dataType: "json"});
+};
+doc.addEventListener("click", doc.__citeHandler, true);
+send("streamlit:componentReady", {apiVersion: 1});
+send("streamlit:setFrameHeight", {height: 0});
+</script></body></html>

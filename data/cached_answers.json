@@ -1,0 +1,84 @@
+{
+  "what is the difference between negative reinforcement and punishment": {
+    "hint": "Think about what happens to the behavior afterward: does it become more likely or less likely? Reread [6.3] and sort the seatbelt alarm and the phone example by that question.",
+    "explain": "1. Reinforcement makes a behavior more likely; punishment makes it less likely [6.3].\n2. \"Negative\" only means something is taken away, not that it is bad [6.3].\n3. Negative reinforcement removes something unpleasant, like a seatbelt alarm stopping once you buckle, so buckling becomes more likely [6.3].\n4. Punishment, positive or negative, lowers the behavior, like losing a phone after breaking a rule [6.3].",
+    "answer": "Negative reinforcement always increases a behavior by taking something away [6.3 \u00b64, 6.3 \u00b68]. In contrast, punishment always decreases a behavior, whether you add an undesirable stimulus or remove a pleasant one [6.3 \u00b64, 6.3 \u00b68]. What does positive mean versus negative in operant conditioning according to [6.3 \u00b64]?"
+  },
+  "what is the difference between extinction and spontaneous recovery": {
+    "hint": "One of these describes a response fading, and the other describes something that happens after a pause. Which one needs a rest period? Reread [6.2].",
+    "explain": "1. Extinction happens when the conditioned stimulus keeps appearing without the unconditioned stimulus, so the conditioned response weakens [6.2].\n2. Spontaneous recovery is when that weakened response briefly returns after a rest period [6.2].",
+    "answer": "Extinction occurs when a conditioned response weakens or stops because the conditioned stimulus is repeatedly presented without the unconditioned stimulus, or after reinforcement stops [6.2 \u00b619, 6.2 \u00b620, 6.3 \u00b626]. In contrast, spontaneous recovery is the return or reappearance of that previously extinguished conditioned response after a rest period or break from conditioning [6.2 \u00b619, 6.2 \u00b620]. What happens to your salivation when you hear the ice cream truck on Monday morning in [6.2 \u00b620]?"
+  },
+  "just tell me the answer: what is a conditioned response": {
+    "hint": "I'll stay in hint mode so you can work it out. In Pavlov's study, what did the dogs start salivating to that they didn't salivate to at first? Reread [6.2].",
+    "explain": "1. A neutral stimulus, like a tone, is paired again and again with an unconditioned stimulus, like food [6.2].\n2. The tone becomes a conditioned stimulus [6.2].\n3. The learned response to the tone alone, like salivating, is the conditioned response [6.2].",
+    "answer": "The conditioned response is the behavior caused by the conditioned stimulus [6.2 \u00b67]. For example, Pavlov's dogs learned to salivate as a conditioned response to the tone alone in anticipation of food [6.2 \u00b67]. What did the dogs learn to associate the tone with in [6.2 \u00b67]?"
+  },
+  "what are the four steps of modeling": {
+    "hint": "Picture yourself learning a dance move from a video. What would you need to do before, during, and after watching it? Compare your list with Bandura's steps in [6.4].",
+    "explain": "1. Attention: the observer has to notice the model [6.4].\n2. Retention: they have to remember what they saw [6.4].\n3. Reproduction: they have to be able to perform the behavior [6.4].\n4. Motivation: they have to want to do it, which vicarious reinforcement makes more likely [6.4].",
+    "answer": "The four specific steps in the process of modeling are attention, retention, reproduction, and motivation [6.4 \u00b68]. In this process, you must focus on the model, remember what you observed, perform the behavior, and have the desire to copy it [6.4 \u00b68]. Which concept in [6.4 \u00b68] describes being less motivated to copy a model after seeing them get punished?"
+  },
+  "why are slot machines so hard to stop playing": {
+    "hint": "Does a slot machine pay out on every pull, or unpredictably? Find the schedule in [6.3] that matches, and check what it says about extinction.",
+    "explain": "1. A slot machine pays out after an unpredictable number of plays, which is a variable-ratio schedule [6.3].\n2. Behaviors learned on a variable-ratio schedule are especially resistant to extinction, so people keep playing [6.3].",
+    "answer": "Slot machines rely on a variable ratio reinforcement schedule, meaning the number of responses needed for a reward constantly varies [6.3 \u00b625]. Because players never know when the next payout is coming, they keep hoping that the next quarter will bring a big win [6.3 \u00b625]. This unpredictable schedule makes the behavior highly addictive and extremely resistant to extinction [6.3 \u00b625]. What character's experience in [6.3 \u00b625] illustrates how this schedule keeps someone playing?"
+  },
+  "what makes something count as learning instead of a reflex": {
+    "answer": "Unlike reflexes, which do not have to be learned and are present automatically, learning involves change and experience [6.1 \u00b62]. Specifically, learning is defined as a relatively permanent change in behavior or knowledge that results from experience [6.1 \u00b62]. While reflexes are unlearned, innate behaviors that help an organism adapt, learning requires acquiring knowledge and skills through experience over time [6.1 \u00b62]. Which infant reflex is mentioned in [6.1 \u00b62] to demonstrate a behavior that does not have to be learned?"
+  },
+  "how is an instinct different from a reflex": {
+    "answer": "Reflexes are simpler motor or neural reactions to specific stimuli that involve specific body parts and more primitive centers of the central nervous system like the spinal cord and medulla [6.1 \u00b61]. In contrast, instincts are more complex patterns of behavior triggered by broader events like maturation or seasonal changes, and they involve higher brain centers as well as movement of the organism as a whole [6.1 \u00b61]. Which examples of instincts are mentioned in [6.1 \u00b61]?"
+  },
+  "what is associative learning": {
+    "answer": "Associative learning occurs when an organism makes connections between stimuli or events that occur together in the environment [6.1 \u00b63]. This form of learning is central to classical conditioning, operant conditioning, and observational learning [6.1 \u00b63]. In operant conditioning, for instance, organisms learn to associate a specific behavior with its consequence [6.3 \u00b61]. Which three basic learning processes mentioned in [6.1 \u00b63] rely on associative learning?"
+  },
+  "what did pavlov notice about the dogs in his digestion studies": {
+    "answer": "Pavlov observed that over time, the dogs began to salivate not only at the taste of food, but also at the sight of food, an empty food bowl, and the sound of the assistants' footsteps [6.2 \u00b63]. He noted that while salivating to food in the mouth is reflexive, dogs do not naturally salivate to an empty bowl or footsteps [6.2 \u00b63]. What profession did Pavlov actually practice while making these observations in [6.2 \u00b63]?"
+  },
+  "what is the difference between an unconditioned stimulus and a conditioned stimulus": {
+    "answer": "An organism naturally connects a neutral stimulus to an unconditioned stimulus during the initial learning period called acquisition [6.2 \u00b615]. A conditioned stimulus starts out as a neutral stimulus that eventually elicits a conditioned response on its own after being repeatedly paired with the unconditioned stimulus [6.2 \u00b615] [6.2 \u00b67]. What role does timing play between presenting these two stimuli according to [6.2 \u00b615]?"
+  },
+  "how does a neutral stimulus become a conditioned stimulus": {
+    "answer": "During the initial learning period called acquisition, an organism learns to connect a neutral stimulus and an unconditioned stimulus [6.2 \u00b615]. A neutral stimulus becomes a conditioned stimulus after repeatedly being paired with an unconditioned stimulus [6.2 \u00b67]. Through this process, it eventually becomes capable of eliciting the conditioned response by itself [6.2 \u00b615]. What specific stimulus served as the neutral stimulus in Pavlov's experiment described in [6.2 \u00b66]?"
+  },
+  "what is stimulus generalization": {
+    "answer": "Stimulus generalization occurs when an organism demonstrates the conditioned response to stimuli that are similar to the conditioned stimulus [6.2 \u00b622]. It represents the opposite process of stimulus discrimination [6.2 \u00b622]. The more similar a new stimulus is to the original conditioned stimulus, the more likely the organism will produce that conditioned response [6.2 \u00b622]. Which example involving Tiger the cat in [6.2 \u00b622] illustrates this concept?"
+  },
+  "what did the little albert study show": {
+    "answer": "Rayner and Watson\u2019s experiments with Little Albert demonstrated how fears can be conditioned using classical conditioning [6.2 \u00b625]. Watson succeeded in conditioning a fear response, which demonstrated that emotions could become conditioned responses [6.2 \u00b625]. Days later, Little Albert also demonstrated stimulus generalization by becoming afraid of other furry things [6.2 \u00b625]. Which other furry objects did Little Albert fear during stimulus generalization according to [6.2 \u00b625]?"
+  },
+  "what does positive mean in positive reinforcement": {
+    "answer": "In operant conditioning, positive does not mean good, but instead means that you are adding something [6.3 \u00b64]. Specifically, in positive reinforcement, a desirable stimulus is added to increase a behavior [6.3 \u00b65]. What type of stimulus did Skinner add for the rats in [6.3 \u00b620]?"
+  },
+  "is taking away a phone positive or negative punishment": {
+    "answer": "Taking away a phone is negative punishment because negative means you are taking something away [6.3 \u00b64]. In negative punishment, you remove a pleasant stimulus in order to decrease a behavior [6.3 \u00b68]. Which example in [6.3 \u00b68] also illustrates removing an item to decrease misbehavior?"
+  },
+  "what is shaping": {
+    "answer": "In operant conditioning, shaping is an approach where we reward successive approximations of a target behavior instead of rewarding only the target behavior itself [6.3 \u00b611]. In this process, behaviors are broken down into many small, achievable steps [6.3 \u00b611]. It is often used to teach a complex behavior or a chain of behaviors [6.3 \u00b613]. Which entertaining pigeon behaviors in [6.3 \u00b613] did Skinner teach using this technique?"
+  },
+  "what is a fixed-interval schedule": {
+    "answer": "A fixed interval reinforcement schedule is when behavior is rewarded after a set amount of time [6.3 \u00b622]. In this schedule, the amount of time between reinforcements is set and unchanging [6.3 \u00b621]. It is the least productive reinforcement schedule and the easiest to extinguish [6.3 \u00b626]. How does the hospital example in [6.3 \u00b622] illustrate this schedule?"
+  },
+  "what did bandura's bobo doll study find": {
+    "answer": "In Bandura's Bobo doll experiment, children's aggressive behavior was influenced by whether an adult teacher was punished for her aggressive actions [6.4 \u00b69]. When the teacher was punished, the children decreased their tendency to act aggressively toward the doll [6.4 \u00b69]. However, when the teacher was praised or ignored, the children imitated her actions and words by punching, kicking, and yelling at the doll [6.4 \u00b69]. How did the teacher act toward the doll while the child watched in [6.4 \u00b69]?"
+  },
+  "what is vicarious reinforcement": {
+    "answer": "Vicarious reinforcement occurs when you see that a model was reinforced for their behavior, which makes you more motivated to copy them [6.4 \u00b68]. This process is part of the final motivation step required for successful observational learning [6.4 \u00b68]. What opposite effect occurs when a model is observed being punished instead, according to [6.4 \u00b68]?"
+  },
+  "how is observational learning different from operant conditioning": {
+    "answer": "In contrast to operant conditioning, in which learning occurs only through direct experience, observational learning is the process of watching others and then imitating what they do [6.1 \u00b65]. Additionally, observational learning can take place in the absence of external reinforcement by taking internal mental states and cognitive processes into account [6.4 \u00b64]. Observational learning also extends the effective range of operant conditioning [6.1 \u00b65]. Which example in [6.1 \u00b65] illustrates how observational learning helps someone learn without relying on trial and error alone?"
+  },
+  "why would seeing a model get punished make someone less likely to copy them": {
+    "answer": "Observing a model being punished makes an observer less motivated to copy the behavior, a process known as vicarious punishment [6.4 \u00b68]. For instance, children who saw a teacher get punished for aggressive acts decreased their tendency to act like the teacher [6.4 \u00b69]. Similarly, observing a model receive a punishment causes the observer to avoid copying the action to prevent receiving that same punishment [6.4 \u00b68]. What specific example involving sisters and makeup in [6.4 \u00b68] illustrates this effect?"
+  },
+  "whats the diffrence between negitive reinforcment and punishmnet": {
+    "answer": "Negative reinforcement and punishment are different mechanisms because reinforcement, even when negative, always increases a behavior [6.3 \u00b68]. In contrast, punishment always decreases a behavior [6.3 \u00b68]. Additionally, in operant conditioning, negative means you are taking something away, while punishment focuses strictly on decreasing the likelihood of a behavioral response [6.3 \u00b64]. Which example in [6.3 \u00b68] illustrates negative punishment?"
+  },
+  "what is clasical conditoning": {
+    "answer": "Classical conditioning is a process by which we learn to associate stimuli and, consequently, to anticipate events [6.2 \u00b62]. In this process, an organism connects a neutral stimulus with an unconditioned stimulus during an initial learning period called acquisition [6.2 \u00b615]. Eventually, the neutral stimulus becomes a conditioned stimulus that can elicit the conditioned response on its own [6.2 \u00b615]. What pet example in [6.2 \u00b69] illustrates classical conditioning?"
+  },
+  "stop hinting and give me the definition of extinction": {
+    "answer": "In operant conditioning, extinction of a reinforced behavior occurs at some point after reinforcement stops [6.3 \u00b626]. In classical conditioning, extinction occurs when a conditioned response weakens because the conditioned stimulus is repeatedly presented without the unconditioned stimulus [6.2 \u00b619] [6.2 \u00b620]. Which reinforcement schedule in [6.3 \u00b626] is described as the most resistant to extinction?"
+  }
+}

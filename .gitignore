@@ -1,0 +1,10 @@
+# secrets and private data
+.streamlit/secrets.toml
+data/logs*.csv
+results/
+# large or generated files (keep the repo small for Streamlit Cloud)
+*.pdf
+.venv/
+.pypdf_pkg/
+__pycache__/
+.pytest_cache/
