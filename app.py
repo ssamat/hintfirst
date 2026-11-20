@@ -19,8 +19,10 @@ import html
 import os
 import random
 import re
+import threading
 import time
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 import streamlit as st
@@ -139,6 +141,34 @@ def write_log(row: dict):
         if new_file:
             w.writeheader()
         w.writerow(row)
+    ws = log_sheet()
+    if ws is not None:   # in the background, so a slow Sheets call never holds up the learner
+        threading.Thread(target=append_to_sheet, args=(ws, [str(row.get(f, "")) for f in LOG_FIELDS]),
+                         daemon=True).start()
+
+
+@st.cache_resource
+def log_sheet():
+    """The Google Sheet that mirrors logs.csv, or None. Streamlit Community Cloud wipes local
+    files when the app restarts, so a deployed pilot needs a copy that lasts."""
+    url, creds = get_secret("LOG_SHEET_URL"), get_secret("gcp_service_account")
+    if not url or not creds:
+        return None
+    try:
+        import gspread
+        ws = gspread.service_account_from_dict(dict(creds)).open_by_url(url).sheet1
+        if not ws.row_values(1):
+            ws.append_row(LOG_FIELDS)
+        return ws
+    except Exception:
+        return None
+
+
+def append_to_sheet(ws, values: list[str]):
+    try:
+        ws.append_row(values, value_input_option="RAW")
+    except Exception:
+        pass   # logs.csv still has the row
 
 
 def log(section: str, question: str, reply: T.Reply | None = None, latency: float = 0.0, **extra):
@@ -229,6 +259,14 @@ def remove_note(key: str):
 
 
 # ── Streamlit widget helpers ──────────────────────────────────────────────────
+@contextmanager
+def thinking(text: str = "Thinking…"):
+    """Spinner around a tutor call; each one counts toward the session's AI limit."""
+    st.session_state.ai_uses += 1
+    with st.spinner(text):
+        yield
+
+
 def pref(name: str) -> bool:
     return st.session_state.prefs.get(name, PREFS[name][1])
 
@@ -367,7 +405,7 @@ def render_ladder(item: dict, s: dict, key: str, section: str):
     level = len(s["help"])
     if level < len(LADDER) and st.button(LADDER[level], key=f"{key}_help{level + 1}"):
         t0 = time.time()
-        with st.spinner("Thinking…"):
+        with thinking():
             r = tutor.practice_help(item, level + 1)
         s["help"].append(r)
         bump(section, "worked" if level + 1 == 3 else "hints")
@@ -399,7 +437,7 @@ def render_self_explanation(item: dict, s: dict, key: str, section: str):
                              placeholder="One sentence is enough")
         if st.button("Check my reason", key=f"{key}_explainbtn", disabled=not text.strip()):
             t0 = time.time()
-            with st.spinner("Thinking…"):
+            with thinking():
                 r = tutor.self_explanation(item, explaining, text)
             s["explain"] = dict(text=text.strip(), reply=r)
             log(section, item["question"], r, time.time() - t0, action="self_explain",
@@ -438,6 +476,7 @@ def asked_turns() -> list[dict]:
 
 def explain_differently(sec: str, turn: dict):
     turn["diff_done"] = True
+    st.session_state.ai_uses += 1   # a callback, so no spinner; it still counts toward the limit
     t0 = time.time()
     r = tutor.explain_differently(turn["question"], turn["reply"].text, current_section=sec)
     add_turn(sec, "Explain it differently", r, None, action="differently")
@@ -584,7 +623,7 @@ def render_chat(sec: str):
             for col, (action, label) in zip(cols, ACTIONS.items()):
                 if col.button(label, key=f"act_{action}"):
                     t0 = time.time()
-                    with st.spinner("Thinking…"):
+                    with thinking():
                         r = tutor.answer("", current_section=sec, focus=focus, action=action)
                     add_turn(sec, f"{label} (¶{focus.para_num})", r, focus, action)
                     bump(sec, "quick_actions")
@@ -592,7 +631,7 @@ def render_chat(sec: str):
                         action=action, paragraph=f"{sec} ¶{focus.para_num}")
                     st.rerun()
             if cols[2].button("Quiz me on this", key="act_quiz"):
-                with st.spinner("Thinking…"):
+                with thinking():
                     data = tutor.selfcheck(f"Quiz me on {focus.para_label}", [focus], focus.text)
                 quiz = None
                 if data:
@@ -613,7 +652,10 @@ def render_chat(sec: str):
         # A repeat is the same question about the same thing: in 💬 mode, the same paragraph
         here = f"{focus.section_id} ¶{focus.para_num}" if focus else ""
         same = [t for t in earlier if t["paragraph"] == here]
-        i = tutor.repeat_of(question, [t["question"] for t in same])
+        if focus and T.is_vague(question):   # "what does this mean?" twice about one paragraph
+            i = next((k for k, t in enumerate(same) if T.is_vague(t["question"])), None)
+        else:
+            i = tutor.repeat_of(question, [t["question"] for t in same])
         # A repeat brings back the earlier answer, unless the question is now an open practice item
         if i is not None and not tutor.practice_redirect(question, active_practice())[0]:
             prev = same[i]
@@ -621,7 +663,7 @@ def render_chat(sec: str):
                      repeat_of=dict(section=prev["section"], question=prev["question"]))
             log(sec, question, prev["reply"], action="repeat", note=f"repeats: {prev['question']}")
             st.rerun()
-        with st.spinner("Thinking…"):
+        with thinking("Writing an answer and checking it against the reading…" if tutor.generate_fn else "Thinking…"):
             r = tutor.answer(question, current_section=sec, focus=focus, active_practice=active_practice(),
                              history=[t["question"] for t in earlier])
         add_turn(sec, question, r, focus)
@@ -710,6 +752,8 @@ def load_tutor(live: bool):
 # ══════════════════════════════════════════════════════════════════════════════
 
 admin   = is_admin()
+# AI answers per learner session, so a public link can't use up the API quota
+AI_LIMIT = int(get_secret("AI_LIMIT", 40))
 has_key = bool(get_secret("GEMINI_API_KEY"))
 live    = has_key
 
@@ -737,6 +781,7 @@ ss.setdefault("cal_shown",      set())
 ss.setdefault("reviews",        {})
 ss.setdefault("reviewed",       set())
 ss.setdefault("prefs",          {})
+ss.setdefault("ai_uses",        0)
 
 # ── Admin sidebar (learners get no sidebar) ───────────────────────────────────
 if admin:
@@ -749,9 +794,12 @@ if admin:
             st.warning("Sample text — load data/unit.md")
         if LOG_PATH.exists():
             st.download_button("Download log", LOG_PATH.read_bytes(), "logs.csv", "text/csv")
+        st.caption("Log copy: Google Sheet" if log_sheet() else "Log copy: none (logs.csv resets when the app restarts)")
+        st.caption(f"AI uses this session: {ss.ai_uses} (learners are limited to {AI_LIMIT})")
         if st.button("Clear session"):
             ss.turns, ss.practice, ss.done, ss.section_stats, ss.focus = {}, {}, set(), {}, None
             ss.notes, ss.cal_shown, ss.reviews, ss.reviewed = [], set(), {}, set()
+            ss.ai_uses = 0
             st.rerun()
         st.divider()
         st.subheader("Per-section metrics")
@@ -772,7 +820,9 @@ if admin:
             for sid, txt in ss.reflection.items():
                 st.caption(f"*{sid}:* {txt}")
 
-tutor = load_tutor(live)
+# Past the limit the tutor keeps working offline: answers and hints quote the reading.
+over_limit = not admin and live and ss.ai_uses >= AI_LIMIT
+tutor = load_tutor(live and not over_limit)
 
 # ── Consent gate ──────────────────────────────────────────────────────────────
 if ss.consent is None:
@@ -890,6 +940,9 @@ with col_read:
 
 # ━━━━ RIGHT: ask the reading / practice ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 with col_tutor:
+    if over_limit:
+        st.info(f"You've used this session's {AI_LIMIT} AI answers. The tutor still works: "
+                "from here on, answers and hints quote the reading directly.")
     render_review(sec_id)
     panel = st.radio("Panel", PANELS, key="panel", horizontal=True, label_visibility="collapsed")
     if panel == PANELS[0]:

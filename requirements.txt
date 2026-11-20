@@ -2,3 +2,4 @@ streamlit>=1.40
 scikit-learn>=1.4
 numpy>=1.26
 google-genai>=1.0
+gspread>=6.0

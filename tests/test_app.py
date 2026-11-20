@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 
 import pytest
+import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 import tutor as T
@@ -308,6 +309,72 @@ def test_repeat_in_paragraph_mode(app):
     click(at, "ask_6.1_3")
     at.chat_input[0].set_value("Why is this unlearned?").run()
     assert len(CALLS) > n                                       # another paragraph: a new answer
+
+
+def test_vague_repeat_in_paragraph_mode(app):
+    at = start(app)
+    click(at, "ask_6.1_2")
+    at.chat_input[0].set_value("what does this mean?").run()
+    first, n = last_reply(at), len(CALLS)
+    at.chat_input[0].set_value("explain this").run()
+    assert last_reply(at) == first and len(CALLS) == n          # same paragraph: earlier answer
+    assert any("You asked this earlier" in c.value for c in at.caption)
+
+
+def test_session_ai_limit_falls_back_to_reading(monkeypatch, restore_logs):
+    monkeypatch.setattr(T, "make_gemini", fake_make_gemini)
+    CALLS.clear()
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.secrets["GEMINI_API_KEY"], at.secrets["ADMIN_MODE"], at.secrets["AI_LIMIT"] = "fake-key", "false", "1"
+    at.run()
+    at = start(at)
+    at.chat_input[0].set_value("What is a reflex?").run()
+    n = len(CALLS)
+    assert n > 0 and re.search(r"\[6\.\d ¶\d+\]", last_reply(at))   # the one AI answer
+    at.chat_input[0].set_value("How do instincts differ from reflexes?").run()
+    assert len(CALLS) == n                                       # past the limit: no API calls
+    assert re.search(r"\[6\.\d ¶\d+\]", last_reply(at))           # still a cited answer
+    assert "this session's 1 AI answers" in at.info[0].value
+
+
+class FakeSheet:
+    def __init__(self):
+        self.rows = []
+
+    def row_values(self, n):
+        return self.rows[n - 1] if len(self.rows) >= n else []
+
+    def append_row(self, values, value_input_option=None):
+        self.rows.append(values)
+
+
+def test_log_mirrored_to_google_sheet(monkeypatch, restore_logs):
+    import sys
+    import time
+    import types
+    sheet = FakeSheet()
+    fake = types.ModuleType("gspread")
+    fake.service_account_from_dict = lambda creds: types.SimpleNamespace(
+        open_by_url=lambda url: types.SimpleNamespace(sheet1=sheet))
+    monkeypatch.setitem(sys.modules, "gspread", fake)
+    st.cache_resource.clear()                                    # log_sheet() was cached as None
+    try:
+        monkeypatch.setattr(T, "make_gemini", fake_make_gemini)
+        at = AppTest.from_file(APP, default_timeout=60)
+        at.secrets["GEMINI_API_KEY"], at.secrets["ADMIN_MODE"] = "fake-key", "false"
+        at.secrets["LOG_SHEET_URL"] = "https://docs.google.com/spreadsheets/d/x"
+        at.secrets["gcp_service_account"] = {"type": "service_account", "client_email": "x@y"}
+        at.run()
+        at = start(at, consent=True)
+        at.chat_input[0].set_value("What is a reflex?").run()
+        for _ in range(50):                                      # rows are appended in the background
+            if len(sheet.rows) > 1:
+                break
+            time.sleep(0.05)
+        assert sheet.rows[0][:3] == ["time_utc", "session", "section"]
+        assert any("What is a reflex?" in r for r in sheet.rows[1:])
+    finally:
+        st.cache_resource.clear()
 
 
 # ── no API key ────────────────────────────────────────────────────────────────
