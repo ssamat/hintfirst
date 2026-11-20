@@ -19,9 +19,16 @@ APP   = str(ROOT / "app.py")
 CALLS = []   # (system, prompt) for every fake Gemini call
 
 
+def gen_calls():
+    """Generation calls only, without the support check that follows each chat answer."""
+    return [c for c in CALLS if c[0] != T.SUPPORT_CHECK_SYSTEM]
+
+
 def fake_make_gemini(api_key, model="x"):
     def gen(system, prompt):
         CALLS.append((system, prompt))
+        if system == T.SUPPORT_CHECK_SYSTEM:
+            return "\n".join(f"{k} SUPPORTED" for k in range(1, prompt.count("SENTENCE ") + 1))
         cite = re.search(r"\[(\d+\.\d+ ¶\d+)\]", prompt).group(1)   # first retrieved paragraph
         if "self-check" in system:
             return json.dumps({"question": "Which behavior is a reflex?",
@@ -79,7 +86,7 @@ def app_no_key(monkeypatch, restore_logs):
 def start(at, consent=False):
     if consent:
         at.checkbox(key="consent_check").check()
-    at.button[0].click().run()
+    [b for b in at.button if b.key == "start"][0].click().run()
     assert not at.exception
     return at
 
@@ -131,7 +138,8 @@ def test_direct_answer_with_citations(app):
     at.chat_input[0].set_value("What is the difference between negative reinforcement and punishment?").run()
     reply = last_reply(at)
     assert re.search(r"\[6\.\d ¶\d+\]", reply) and reply.rstrip().endswith("?")
-    assert CALLS[-1][0].startswith(T.ANSWER_SYSTEM)
+    assert gen_calls()[-1][0].startswith(T.ANSWER_SYSTEM)
+    assert CALLS[-1][0] == T.SUPPORT_CHECK_SYSTEM                # every direct answer is checked
     assert not {"Hint", "Bigger hint", "Worked answer"} & set(labels(at))   # no ladder in the chat
 
 
@@ -157,14 +165,14 @@ def test_paragraph_scoped_asking_is_logged(monkeypatch, restore_logs):
     click(at, "ask_6.1_2")
     assert {"Explain simply", "Give an example", "Quiz me on this"} <= set(labels(at))
     click(at, "act_simple")
-    system, prompt = CALLS[-1]
+    system, prompt = gen_calls()[-1]
     assert T.SIMPLE_RULE in system
     assert prompt.startswith("PASSAGES:\n[6.1 ¶2]")              # focus paragraph retrieved first
     assert "THE LEARNER IS ASKING ABOUT [6.1 ¶2]" in prompt
     assert "[6.1 ¶2]" in last_reply(at)
 
     at.chat_input[0].set_value("Why is this unlearned?").run()  # typed question stays scoped
-    assert CALLS[-1][1].startswith("PASSAGES:\n[6.1 ¶2]")
+    assert gen_calls()[-1][1].startswith("PASSAGES:\n[6.1 ¶2]")
 
     click(at, "act_quiz")
     assert any("Which behavior is a reflex?" in t for t in texts(at))
@@ -201,7 +209,7 @@ def test_repeat_question_brings_back_earlier_answer(app):
     assert last_reply(at) == first and len(CALLS) == n          # no new generation
     assert any("You asked this earlier" in c.value for c in at.caption)
     at.chat_input[0].set_value("How do instincts differ from reflexes?").run()
-    assert "EARLIER QUESTIONS:\n- What is a reflex?" in CALLS[-1][1]
+    assert "EARLIER QUESTIONS:\n- What is a reflex?" in gen_calls()[-1][1]
 
 
 def test_next_section_recaps_earlier_questions(app):
@@ -250,6 +258,117 @@ def test_practice_flow(app):
     assert any("Worth another look" in t for t in texts(at))
     assert "cal_goto_1" in [b.key for b in at.button]          # missed question 1 links to its paragraph
     assert not at.exception
+
+
+def answer_wrong(at, item_id):
+    item = next(i for i in T.load_items(T.DATA / "practice.json") if i["id"] == item_id)
+    at.radio(key=f"p_{item_id}_choice").set_value(item["options"][(item["answer_index"] + 1) % 4]).run()
+    click(at, f"p_{item_id}_check")
+    click(at, f"p_{item_id}_reveal")
+    return item
+
+
+def test_practice_shows_one_new_question_at_a_time(app):
+    at = start(app)
+    click(at, "mark_done")
+    keys = [r.key for r in at.radio]
+    assert "p_rq1_choice" in keys and "p_rq2_choice" not in keys
+    answer_wrong(at, "rq1")
+    assert "p_rq2_choice" in [r.key for r in at.radio]
+
+
+def test_pointer_fades_across_sections(app):
+    # First practice section: a wrong answer highlights the source paragraph
+    at = start(app)
+    click(at, "mark_done")
+    rq1 = answer_wrong(at, "rq1")
+    para = rq1["source_paragraph"].split("¶")[1]
+    assert any(f'class="reading hl"><b>¶{para}</b>' in t for t in texts(at))
+    assert any("Reread the highlighted" in t for t in texts(at))
+
+    # After two finished practice sections: only the section, until a missed retry
+    at.session_state["cal_shown"] = {"6.2", "6.3"}
+    at.session_state["highlight"] = None
+    rq2 = answer_wrong(at, "rq2")
+    assert any("The answer is in section 6.1." in t for t in texts(at))
+    assert "p_rq2_goto" not in [b.key for b in at.button]
+    assert not any('class="reading hl"' in t for t in texts(at))
+    at.radio(key="p_rq2_retry").set_value(rq2["options"][(rq2["answer_index"] + 2) % 4]).run()
+    click(at, "p_rq2_retrybtn")
+    assert "p_rq2_goto" in [b.key for b in at.button]           # now it names the paragraph
+
+
+def test_repeat_in_paragraph_mode(app):
+    at = start(app)
+    click(at, "ask_6.1_2")
+    at.chat_input[0].set_value("Why is this unlearned?").run()
+    first, n = last_reply(at), len(CALLS)
+    at.chat_input[0].set_value("why is this unlearned again").run()
+    assert last_reply(at) == first and len(CALLS) == n          # same paragraph: earlier answer
+    click(at, "ask_6.1_3")
+    at.chat_input[0].set_value("Why is this unlearned?").run()
+    assert len(CALLS) > n                                       # another paragraph: a new answer
+
+
+def test_vague_repeat_in_paragraph_mode(app):
+    at = start(app)
+    click(at, "ask_6.1_2")
+    at.chat_input[0].set_value("what does this mean?").run()
+    first, n = last_reply(at), len(CALLS)
+    at.chat_input[0].set_value("explain this").run()
+    assert last_reply(at) == first and len(CALLS) == n          # same paragraph: earlier answer
+    assert any("You asked this earlier" in c.value for c in at.caption)
+
+
+def test_session_ai_limit_falls_back_to_reading(monkeypatch, restore_logs):
+    monkeypatch.setattr(T, "make_gemini", fake_make_gemini)
+    CALLS.clear()
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.secrets["GEMINI_API_KEY"], at.secrets["ADMIN_MODE"], at.secrets["AI_LIMIT"] = "fake-key", "false", "1"
+    at.run()
+    at = start(at)
+    at.chat_input[0].set_value("What is a reflex?").run()
+    n = len(CALLS)
+    assert n > 0 and re.search(r"\[6\.\d ¶\d+\]", last_reply(at))   # the one AI answer
+    at.chat_input[0].set_value("How do instincts differ from reflexes?").run()
+    assert len(CALLS) == n                                       # past the limit: no API calls
+    assert re.search(r"\[6\.\d ¶\d+\]", last_reply(at))           # still a cited answer
+    assert "this session's 1 AI answers" in at.info[0].value
+
+
+def answer_test(at, kind, right):
+    """Answer every item of a test: the first `right` correctly, the rest "I don't know yet"."""
+    for n, r in enumerate([r for r in at.radio if r.key and r.key.startswith(f"{kind}_")]):
+        item = next(i for i in T.load_items(T.DATA / "assessments.json") if f"{kind}_{i['id']}" == r.key)
+        r.set_value(item["options"][item["answer_index"]] if n < right else "I don't know yet")
+    at.run()
+
+
+def test_pre_and_post_test(app):
+    at = app
+    click(at, "start_pretest")
+    assert at.radio(key="view").value == "Pre-test"
+    assert not at.chat_input and not any('class="reading' in t for t in texts(at))   # tutor-free
+    radios = [r for r in at.radio if r.key.startswith("pre_")]
+    assert len(radios) == 12 and radios[0].options[-1] == "I don't know yet"
+    assert [b for b in at.button if b.key == "pre_submit"][-1].disabled      # all must be answered
+    answer_test(at, "pre", right=3)
+    click(at, "pre_submit")
+    assert any("You got **3 of 12**" in t for t in texts(at))
+    assert not any("Answer:" in c.value for c in at.caption)               # pre-test hides answers
+
+    click(at, "pre_to_study")
+    assert at.chat_input                                                    # back to the reading
+    at.radio(key="view").set_value("Post-test").run()
+    post = [r for r in at.radio if r.key.startswith("post_")]
+    assert [r.label for r in post] != [r.label for r in radios]            # new order
+    answer_test(at, "post", right=10)
+    click(at, "post_submit")
+    assert any("You got **10 of 12**" in t for t in texts(at)) and any("**+7**" in t for t in texts(at))
+    go = next(b for b in at.button if b.key and b.key.startswith("post_go_"))
+    go.click().run()
+    assert at.radio(key="view").value == "Study"
+    assert any('class="reading hl"' in t for t in texts(at))                # the paragraph is highlighted
 
 
 # ── no API key ────────────────────────────────────────────────────────────────
@@ -325,7 +444,7 @@ def test_explain_differently_on_repeat(app):
     at.chat_input[0].set_value("What is a reflex?").run()
     at.chat_input[0].set_value("what is a reflex again").run()
     click(at, "diff_6.1_1")
-    system, prompt = CALLS[-1]
+    system, prompt = gen_calls()[-1]
     assert T.DIFFERENT_RULE in system and "EARLIER ANSWER:" in prompt
     assert "diff_6.1_1" not in [b.key for b in at.button]      # offered once per repeat
 

@@ -1,8 +1,9 @@
 """Hint First, Then Explain — CS6460 prototype.
 
 Three roles: "Ask the reading" (short direct answers with citations), practice
-questions (answer first; hints, a bigger hint, and a worked answer after a first try
-or "I'm stuck"), and assessments, which stay separate and tutor-free.
+questions (one at a time; answer first; hints, a bigger hint, and a worked answer after
+a first try or "I'm stuck"), and assessments, which stay separate and tutor-free. After
+a wrong answer, the pointer to the source paragraph fades over the session.
 
 Learners can save any chat answer as a note; it shows highlighted under the paragraph
 it cites. The chat remembers earlier questions: a repeat brings back the earlier answer
@@ -20,6 +21,7 @@ import random
 import re
 import time
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 import streamlit as st
@@ -39,6 +41,7 @@ CITE_ROUTER = components.declare_component("cite_router", path=str(T.Path(__file
 UNIT_PATH = T.DATA / "unit.md" if (T.DATA / "unit.md").exists() else T.DATA / "sample_unit.md"
 IS_SAMPLE = UNIT_PATH.name == "sample_unit.md"
 PRACTICE  = T.load_items(T.DATA / "practice.json")
+ASSESSMENTS = T.load_items(T.DATA / "assessments.json")   # pre/post-test items; never shown to the tutor
 LOG_PATH  = T.DATA / "logs.csv"
 LOG_FIELDS = [
     "time_utc", "session", "section", "paragraph", "action", "practice_id", "question",
@@ -54,7 +57,13 @@ SECTIONS  = [
 ]
 SEC_IDS = [s[0] for s in SECTIONS]
 PANELS  = ["Ask the reading", "Practice"]
+VIEWS   = ["Study", "Pre-test", "Post-test"]
+TESTS   = {"Pre-test": "pre", "Post-test": "post"}
+DONT_KNOW = "I don't know yet"   # counted as wrong; better than a guess for measuring what was learned
 LADDER  = ["Hint", "Bigger hint", "Worked answer"]
+# After a wrong first answer, how far practice points to the source paragraph. The support fades
+# as the learner finishes practice sections: highlight it, then name it, then only the section.
+POINTER_FADE = ["highlight", "name", "section"]
 ACTIONS = {"simple": "Explain simply", "example": "Give an example"}
 # Learner settings (⚙️): the features stay, but extra panels can be turned off
 PREFS = {
@@ -112,7 +121,11 @@ def bump(section: str, field: str, n: int = 1):
 
 def new_mc_state() -> dict:
     return dict(stage="answer", choice=None, confidence=None, first_correct=None,
-                retry_correct=None, stuck=False, help=[], explain=None)
+                retry_correct=None, stuck=False, help=[], explain=None, pointer=None)
+
+
+def pointer_level(practice_sections_done: int) -> str:
+    return POINTER_FADE[min(practice_sections_done, len(POINTER_FADE) - 1)]
 
 
 def finished(s: dict | None) -> bool:
@@ -221,6 +234,14 @@ def remove_note(key: str):
 
 
 # ── Streamlit widget helpers ──────────────────────────────────────────────────
+@contextmanager
+def thinking(text: str = "Thinking…"):
+    """Spinner around a tutor call; each one counts toward the session's AI limit."""
+    st.session_state.ai_uses += 1
+    with st.spinner(text):
+        yield
+
+
 def pref(name: str) -> bool:
     return st.session_state.prefs.get(name, PREFS[name][1])
 
@@ -308,19 +329,33 @@ def render_mc(item: dict, s: dict, key: str, section: str, ladder: bool, action:
                 bump(section, "practice_tried")
                 bump(section, "practice_right", int(correct))
                 ss.section_stats[section]["confidences"].append(conf)
+                if not correct:
+                    s["pointer"] = pointer_level(len(ss.cal_shown))
+                    if s["pointer"] == "highlight":
+                        src = tutor.chunk_at(item["source_paragraph"])
+                        go_to(src.section_id, src.para_num)
             log(section, item["question"], action=action or ("practice_answer" if ladder else "quiz_answer"),
-                practice_id=item["id"], check_correct="y" if correct else "n", confidence=conf)
+                practice_id=item["id"], check_correct="y" if correct else "n", confidence=conf,
+                note=f"pointer: {s['pointer']}" if s["pointer"] else "")
             st.rerun()
 
     else:
         source = item.get("source_paragraph", "")
         if s["first_correct"]:
             md(f"**Correct.** This is in [{source}].")
+            go_to_button(source, f"{key}_goto")
+        elif not ladder:
+            md(f"**Not quite.** Reread [{source}].")
+            st.caption(f"Correct answer: {opts[item['answer_index']]}")
+            go_to_button(source, f"{key}_goto")
+        elif s["pointer"] == "section" and s["retry_correct"] is None:
+            # Faded support: the learner finds the paragraph; a missed retry or a hint names it
+            st.markdown(f"**Not quite.** The answer is in section {item['section']}. "
+                        "Find the paragraph that settles it, or open a hint below.")
         else:
-            md(f"**Not quite.** Reread [{source}]" + (", or open a hint below." if ladder else "."))
-            if not ladder:
-                st.caption(f"Correct answer: {opts[item['answer_index']]}")
-        go_to_button(source, f"{key}_goto")
+            lead = "Reread the highlighted" if s["pointer"] == "highlight" else "Reread"
+            md(f"**Not quite.** {lead} [{source}], or open a hint below.")
+            go_to_button(source, f"{key}_goto")
         if ladder and not finished(s):
             again = st.radio("Try again", opts, index=None, key=f"{key}_retry")
             if st.button("Try again", key=f"{key}_retrybtn", disabled=again is None):
@@ -345,7 +380,7 @@ def render_ladder(item: dict, s: dict, key: str, section: str):
     level = len(s["help"])
     if level < len(LADDER) and st.button(LADDER[level], key=f"{key}_help{level + 1}"):
         t0 = time.time()
-        with st.spinner("Thinking…"):
+        with thinking():
             r = tutor.practice_help(item, level + 1)
         s["help"].append(r)
         bump(section, "worked" if level + 1 == 3 else "hints")
@@ -377,7 +412,7 @@ def render_self_explanation(item: dict, s: dict, key: str, section: str):
                              placeholder="One sentence is enough")
         if st.button("Check my reason", key=f"{key}_explainbtn", disabled=not text.strip()):
             t0 = time.time()
-            with st.spinner("Thinking…"):
+            with thinking():
                 r = tutor.self_explanation(item, explaining, text)
             s["explain"] = dict(text=text.strip(), reply=r)
             log(section, item["question"], r, time.time() - t0, action="self_explain",
@@ -416,6 +451,7 @@ def asked_turns() -> list[dict]:
 
 def explain_differently(sec: str, turn: dict):
     turn["diff_done"] = True
+    st.session_state.ai_uses += 1   # a callback, so no spinner; it still counts toward the limit
     t0 = time.time()
     r = tutor.explain_differently(turn["question"], turn["reply"].text, current_section=sec)
     add_turn(sec, "Explain it differently", r, None, action="differently")
@@ -502,6 +538,15 @@ def render_settings():
                 "2. **Ask** anything. Answers come only from the reading; click a citation like "
                 "[6.3 ¶4] to jump to it.\n"
                 "3. **Practice** after you mark the section done: answer first, then hints if you need them.")
+    st.markdown("**How answers are checked**")
+    if tutor.model_name:
+        st.markdown(f"Answers are written by Google's {tutor.model_name}, using only the paragraphs the tutor "
+                    "retrieved. Before you see an answer, a second check compares each sentence with the "
+                    "paragraph it cites and drops any sentence that paragraph doesn't support. Off-topic "
+                    "questions are declined before the AI is called. Click any citation to check it yourself.")
+    else:
+        st.markdown("The AI is off right now, so answers quote the best-matching sentences of the reading "
+                    "directly. Click any citation to see the paragraph.")
     st.divider()
     st.markdown("**Show**")
     for name, (label, _) in PREFS.items():
@@ -553,7 +598,7 @@ def render_chat(sec: str):
             for col, (action, label) in zip(cols, ACTIONS.items()):
                 if col.button(label, key=f"act_{action}"):
                     t0 = time.time()
-                    with st.spinner("Thinking…"):
+                    with thinking():
                         r = tutor.answer("", current_section=sec, focus=focus, action=action)
                     add_turn(sec, f"{label} (¶{focus.para_num})", r, focus, action)
                     bump(sec, "quick_actions")
@@ -561,7 +606,7 @@ def render_chat(sec: str):
                         action=action, paragraph=f"{sec} ¶{focus.para_num}")
                     st.rerun()
             if cols[2].button("Quiz me on this", key="act_quiz"):
-                with st.spinner("Thinking…"):
+                with thinking():
                     data = tutor.selfcheck(f"Quiz me on {focus.para_label}", [focus], focus.text)
                 quiz = None
                 if data:
@@ -579,15 +624,21 @@ def render_chat(sec: str):
     if question:
         t0 = time.time()
         earlier = asked_turns()
-        i = None if focus else tutor.repeat_of(question, [t["question"] for t in earlier])
+        # A repeat is the same question about the same thing: in 💬 mode, the same paragraph
+        here = f"{focus.section_id} ¶{focus.para_num}" if focus else ""
+        same = [t for t in earlier if t["paragraph"] == here]
+        if focus and T.is_vague(question):   # "what does this mean?" twice about one paragraph
+            i = next((k for k, t in enumerate(same) if T.is_vague(t["question"])), None)
+        else:
+            i = tutor.repeat_of(question, [t["question"] for t in same])
         # A repeat brings back the earlier answer, unless the question is now an open practice item
         if i is not None and not tutor.practice_redirect(question, active_practice())[0]:
-            prev = earlier[i]
+            prev = same[i]
             add_turn(sec, question, prev["reply"], focus,
                      repeat_of=dict(section=prev["section"], question=prev["question"]))
             log(sec, question, prev["reply"], action="repeat", note=f"repeats: {prev['question']}")
             st.rerun()
-        with st.spinner("Thinking…"):
+        with thinking("Writing an answer and checking it against the reading…" if tutor.generate_fn else "Thinking…"):
             r = tutor.answer(question, current_section=sec, focus=focus, active_practice=active_practice(),
                              history=[t["question"] for t in earlier])
         add_turn(sec, question, r, focus)
@@ -609,11 +660,14 @@ def render_practice(sec: str):
         st.markdown("No practice questions for this section.")
         return
     st.caption("Answer first. Hints open after your first try, or if you're stuck.")
+    # One new question at a time: the next opens once this one has a first answer
     for n, it in enumerate(items, 1):
         s = ss.practice.setdefault(it["id"], new_mc_state())
         with st.container(border=True):
             st.caption(f"Question {n} of {len(items)}")
             render_mc(it, s, f"p_{it['id']}", sec, ladder=True)
+        if s["first_correct"] is None:
+            break
 
     results = [dict(confidence=s["confidence"], correct=s["first_correct"], n=n,
                     source_paragraph=it["source_paragraph"])
@@ -658,14 +712,104 @@ def render_calibration(sec: str, cal: dict):
             st.markdown("Your confidence matched your answers well. That's a useful skill.")
 
 
+# ── Pre-test / post-test ──────────────────────────────────────────────────────
+def set_view(view: str):
+    st.session_state.view = view
+
+
+def go_study(sec: str, para: int):
+    """From a post-test result back to the paragraph that answers it."""
+    st.session_state.view = VIEWS[0]
+    go_to(sec, para)
+
+
+def test_items(kind: str) -> list[dict]:
+    """The same items for both tests, with question and option order shuffled per session and
+    test, so the post-test isn't a replay of the pre-test. "I don't know yet" always comes last."""
+    rng = random.Random(f"{ss.session}{kind}")
+    out = []
+    for it in rng.sample(ASSESSMENTS, len(ASSESSMENTS)):
+        order = rng.sample(range(len(it["options"])), len(it["options"]))
+        out.append(dict(it, options=[it["options"][i] for i in order] + [DONT_KNOW],
+                        answer_index=order.index(it["answer_index"])))
+    return out
+
+
+def submit_test(kind: str, items: list[dict]):
+    results = {}
+    for it in items:
+        pick = it["options"].index(ss[f"{kind}_{it['id']}"])
+        results[it["id"]] = None if it["options"][pick] == DONT_KNOW else pick == it["answer_index"]
+        log("test", it["question"], action=f"{kind}test", practice_id=it["id"],
+            check_correct={True: "y", False: "n", None: "?"}[results[it["id"]]])
+    score = sum(bool(r) for r in results.values())
+    ss.tests[kind] = dict(score=score, n=len(items), results=results)
+    log("test", f"({kind}-test score)", action=f"{kind}test_score",
+        note=f"{score}/{len(items)} right, {sum(r is None for r in results.values())} don't know")
+
+
+def render_test(kind: str):
+    """A tutor-free test: no reading, chat, or hints on screen while it is open."""
+    items = test_items(kind)
+    st.markdown(f"### {'Pre-test' if kind == 'pre' else 'Post-test'}")
+    if kind in ss.tests:
+        render_test_result(kind, items)
+        return
+    if kind == "pre":
+        st.markdown(f"{len(items)} questions on the whole chapter, about 5 minutes. It's fine not to know "
+                    f"these yet: this is your starting point, so pick **{DONT_KNOW}** rather than guess. "
+                    "Answers stay hidden afterwards, so the post-test is a fair comparison.")
+    else:
+        st.markdown(f"The same {len(items)} ideas as the pre-test, in a new order. You've finished "
+                    f"{len(ss.done)} of {len(SECTIONS)} sections"
+                    + ("." if len(ss.done) == len(SECTIONS) else "; it works best after all of them."))
+    st.caption("The reading and the tutor are hidden while the test is open.")
+    for n, it in enumerate(items, 1):
+        with st.container(border=True):
+            st.caption(f"Question {n} of {len(items)}")
+            st.radio(it["question"], it["options"], index=None, key=f"{kind}_{it['id']}")
+    answered = sum(ss.get(f"{kind}_{it['id']}") is not None for it in items)
+    if st.button("Submit", key=f"{kind}_submit", type="primary", disabled=answered < len(items)):
+        submit_test(kind, items)
+        st.rerun()
+    if answered < len(items):
+        st.caption(f"{answered} of {len(items)} answered. Submit opens when all are answered.")
+
+
+def render_test_result(kind: str, items: list[dict]):
+    r = ss.tests[kind]
+    st.markdown(f"You got **{r['score']} of {r['n']}**.")
+    if kind == "pre":
+        st.markdown("That's your starting point. The answers stay hidden until you take the post-test.")
+        st.button("Start reading", key="pre_to_study", type="primary", on_click=set_view, args=(VIEWS[0],))
+        return
+    pre = ss.tests.get("pre")
+    if pre:
+        change = r["score"] - pre["score"]
+        st.markdown(f"On the pre-test you got **{pre['score']} of {pre['n']}**, so that's "
+                    f"**{change:+d}**." + (" Nice progress." if change > 0 else ""))
+    missed = [it for it in items if not r["results"][it["id"]]]
+    if not missed:
+        st.markdown("Every question right.")
+        return
+    st.markdown("**Worth another look**")
+    for it in missed:
+        src = tutor.chunk_at(it["source_paragraph"])
+        with st.container(border=True):
+            st.markdown(f"**{it['question']}**")
+            st.caption(f"Answer: {it['options'][it['answer_index']]} · {it['outcome']}")
+            st.button(f"Reread {src.para_label}", key=f"post_go_{it['id']}",
+                      on_click=go_study, args=(src.section_id, src.para_num))
+
+
 @st.cache_resource
 def load_tutor(live: bool):
-    gen = None
+    gen, model = None, ""
     key = get_secret("GEMINI_API_KEY")
     if live and key:
         model = get_secret("GEMINI_MODEL", "gemini-3.8-flash")
         gen   = T.make_gemini(key, model)
-    return T.Tutor(UNIT_PATH, generate_fn=gen)
+    return T.Tutor(UNIT_PATH, generate_fn=gen, model_name=model)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -673,6 +817,8 @@ def load_tutor(live: bool):
 # ══════════════════════════════════════════════════════════════════════════════
 
 admin   = is_admin()
+# AI answers per learner session, so a public link can't use up the API quota
+AI_LIMIT = int(get_secret("AI_LIMIT", 40))
 has_key = bool(get_secret("GEMINI_API_KEY"))
 live    = has_key
 
@@ -700,6 +846,9 @@ ss.setdefault("cal_shown",      set())
 ss.setdefault("reviews",        {})
 ss.setdefault("reviewed",       set())
 ss.setdefault("prefs",          {})
+ss.setdefault("ai_uses",        0)
+ss.setdefault("tests",          {})
+ss.setdefault("view",           VIEWS[0])
 
 # ── Admin sidebar (learners get no sidebar) ───────────────────────────────────
 if admin:
@@ -712,9 +861,11 @@ if admin:
             st.warning("Sample text — load data/unit.md")
         if LOG_PATH.exists():
             st.download_button("Download log", LOG_PATH.read_bytes(), "logs.csv", "text/csv")
+        st.caption(f"AI uses this session: {ss.ai_uses} (learners are limited to {AI_LIMIT})")
         if st.button("Clear session"):
             ss.turns, ss.practice, ss.done, ss.section_stats, ss.focus = {}, {}, set(), {}, None
             ss.notes, ss.cal_shown, ss.reviews, ss.reviewed = [], set(), {}, set()
+            ss.ai_uses, ss.tests, ss.view = 0, {}, VIEWS[0]
             st.rerun()
         st.divider()
         st.subheader("Per-section metrics")
@@ -730,12 +881,16 @@ if admin:
                 "hints": s["hints"], "worked": s["worked"],
             })
         st.dataframe(rows, hide_index=True)
+        if ss.tests:
+            st.caption("**Tests:** " + " · ".join(f"{k}-test {t['score']}/{t['n']}" for k, t in ss.tests.items()))
         if ss.reflection:
             st.caption("**Reflections**")
             for sid, txt in ss.reflection.items():
                 st.caption(f"*{sid}:* {txt}")
 
-tutor = load_tutor(live)
+# Past the limit the tutor keeps working offline: answers and hints quote the reading.
+over_limit = not admin and live and ss.ai_uses >= AI_LIMIT
+tutor = load_tutor(live and not over_limit)
 
 # ── Consent gate ──────────────────────────────────────────────────────────────
 if ss.consent is None:
@@ -753,7 +908,11 @@ if ss.consent is None:
             "so please don't type personal details.",
             value=False, key="consent_check",
         )
-        if st.button("Start", type="primary"):
+        if ASSESSMENTS and st.button(f"Take the {len(ASSESSMENTS)}-question pre-test first (about 5 minutes)",
+                                     key="start_pretest", type="primary"):
+            ss.consent, ss.view = consent_val, "Pre-test"
+            st.rerun()
+        if st.button("Start reading", key="start", type="secondary" if ASSESSMENTS else "primary"):
             ss.consent = consent_val
             st.rerun()
     st.stop()
@@ -768,6 +927,13 @@ if cite and cite.get("n") != ss.cite_n:
         go_to(cite["sec"], cite["para"])
         log(cite["sec"], f"(citation link ¶{cite['para']})", action="cite_link",
             paragraph=f"{cite['sec']} ¶{cite['para']}")
+
+# Pre-test and post-test are their own views, so the reading and the tutor are out of reach
+if ASSESSMENTS:
+    view = st.radio("View", VIEWS, key="view", horizontal=True, label_visibility="collapsed")
+    if view != VIEWS[0]:
+        render_test(TESTS[view])
+        st.stop()
 
 sec_id    = ss.active_section
 sec_idx   = SEC_IDS.index(sec_id)
@@ -853,6 +1019,13 @@ with col_read:
 
 # ━━━━ RIGHT: ask the reading / practice ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 with col_tutor:
+    if ASSESSMENTS and len(ss.done) == len(SECTIONS) and "post" not in ss.tests:
+        with st.container(border=True):
+            st.markdown("You've finished all four sections. Ready to see how much you've learned?")
+            st.button("Take the post-test", key="to_post", type="primary", on_click=set_view, args=("Post-test",))
+    if over_limit:
+        st.info(f"You've used this session's {AI_LIMIT} AI answers. The tutor still works: "
+                "from here on, answers and hints quote the reading directly.")
     render_review(sec_id)
     panel = st.radio("Panel", PANELS, key="panel", horizontal=True, label_visibility="collapsed")
     if panel == PANELS[0]:
