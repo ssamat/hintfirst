@@ -274,6 +274,8 @@ def test_parse_citations():
 # ── Direct answers (the chat) ─────────────────────────────────────────────────
 def test_answer_direct_with_citations(unit_file):
     def gen(system, prompt):
+        if system == T.SUPPORT_CHECK_SYSTEM:
+            return "1 SUPPORTED\n2 SUPPORTED\n3 SUPPORTED"
         assert system == T.ANSWER_SYSTEM
         return ("Negative reinforcement removes something unpleasant [6.3 ¶1]. It increases a behavior [6.3 ¶1]. "
                 "Punishment decreases a behavior [6.3 ¶1]. Positive punishment adds something [6.3 ¶1]. "
@@ -294,6 +296,58 @@ def test_answer_strips_unretrieved_citations_and_adds_question(unit_file):
     r = make_tutor(unit_file, gen).answer("What is learning?")
     assert "6.9" not in r.text
     assert r.text.endswith("?") and "added connecting question" in r.note
+
+
+# ── Support check (second pass against hallucination) ─────────────────────────
+ANSWER_TWO_CLAIMS = ("Negative reinforcement removes something unpleasant [6.3 ¶1]. "
+                     "It is the most addictive schedule [6.3 ¶1]. Which example in [6.3 ¶1] shows this?")
+
+
+def support_gen(verdict, prompts=None):
+    def gen(system, prompt):
+        if system == T.SUPPORT_CHECK_SYSTEM:
+            if prompts is not None:
+                prompts.append(prompt)
+            return verdict
+        return ANSWER_TWO_CLAIMS
+    return gen
+
+
+def test_support_check_drops_unsupported_sentence(unit_file):
+    prompts = []
+    r = make_tutor(unit_file, support_gen("1 SUPPORTED\n2 UNSUPPORTED", prompts)).answer("What is negative reinforcement?")
+    assert r.outcome == "answered" and "removed 1 unsupported" in r.note
+    assert "addictive" not in r.text and "removes something unpleasant" in r.text and r.text.endswith("?")
+    # Each claim goes to the judge with its cited paragraph, without the citation itself
+    assert "SENTENCE 1: Negative reinforcement removes something unpleasant.\nPARAGRAPH 1:\nIn operant" in prompts[0]
+    assert "SENTENCE 3" not in prompts[0]                         # the closing question is not a claim
+
+
+def test_support_check_all_unsupported_falls_back(unit_file):
+    r = make_tutor(unit_file, support_gen("1. UNSUPPORTED\n2. UNSUPPORTED")).answer("What is negative reinforcement?")
+    assert r.outcome == "fallback" and "all 2 claim(s) unsupported" in r.note
+    assert "addictive" not in r.text
+
+
+def test_support_check_fails_open(unit_file):
+    r = make_tutor(unit_file, support_gen("Looks fine to me.")).answer("What is negative reinforcement?")
+    assert r.outcome == "answered" and "addictive" in r.text and "unreadable" in r.note
+
+    def broken(system, prompt):
+        if system == T.SUPPORT_CHECK_SYSTEM:
+            raise TimeoutError
+        return ANSWER_TWO_CLAIMS
+    r = make_tutor(unit_file, broken).answer("What is negative reinforcement?")
+    assert r.outcome == "answered" and "support check skipped: TimeoutError" in r.note
+
+
+def test_support_check_passes_and_runs_once_per_answer(unit_file):
+    systems = []
+    t = make_tutor(unit_file, lambda s, p: systems.append(s) or
+                   ("1 SUPPORTED\n2 SUPPORTED" if s == T.SUPPORT_CHECK_SYSTEM else ANSWER_TWO_CLAIMS))
+    r = t.answer("What is negative reinforcement?")
+    assert r.text == ANSWER_TWO_CLAIMS and "support check passed" in r.note
+    assert systems == [T.ANSWER_SYSTEM, T.SUPPORT_CHECK_SYSTEM]
 
 
 def test_answer_out_of_scope_refused(unit_file):
@@ -495,6 +549,9 @@ def test_repeat_of(tutor_no_gen):
     assert tutor_no_gen.repeat_of("whats negative reinforcment", earlier) == 0
     assert tutor_no_gen.repeat_of("What is positive reinforcement?", earlier) is None
     assert tutor_no_gen.repeat_of("What is shaping?", []) is None
+    # Asking words and plurals don't make a new question
+    assert tutor_no_gen.repeat_of("define shaping", earlier) == 1
+    assert tutor_no_gen.repeat_of("What are negative reinforcements?", earlier) == 0
 
 
 def test_history_reaches_the_prompt(unit_file):

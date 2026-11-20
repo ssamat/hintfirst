@@ -1,8 +1,9 @@
 """Hint First, Then Explain — CS6460 prototype.
 
 Three roles: "Ask the reading" (short direct answers with citations), practice
-questions (answer first; hints, a bigger hint, and a worked answer after a first try
-or "I'm stuck"), and assessments, which stay separate and tutor-free.
+questions (one at a time; answer first; hints, a bigger hint, and a worked answer after
+a first try or "I'm stuck"), and assessments, which stay separate and tutor-free. After
+a wrong answer, the pointer to the source paragraph fades over the session.
 
 Learners can save any chat answer as a note; it shows highlighted under the paragraph
 it cites. The chat remembers earlier questions: a repeat brings back the earlier answer
@@ -55,6 +56,9 @@ SECTIONS  = [
 SEC_IDS = [s[0] for s in SECTIONS]
 PANELS  = ["Ask the reading", "Practice"]
 LADDER  = ["Hint", "Bigger hint", "Worked answer"]
+# After a wrong first answer, how far practice points to the source paragraph. The support fades
+# as the learner finishes practice sections: highlight it, then name it, then only the section.
+POINTER_FADE = ["highlight", "name", "section"]
 ACTIONS = {"simple": "Explain simply", "example": "Give an example"}
 # Learner settings (⚙️): the features stay, but extra panels can be turned off
 PREFS = {
@@ -112,7 +116,11 @@ def bump(section: str, field: str, n: int = 1):
 
 def new_mc_state() -> dict:
     return dict(stage="answer", choice=None, confidence=None, first_correct=None,
-                retry_correct=None, stuck=False, help=[], explain=None)
+                retry_correct=None, stuck=False, help=[], explain=None, pointer=None)
+
+
+def pointer_level(practice_sections_done: int) -> str:
+    return POINTER_FADE[min(practice_sections_done, len(POINTER_FADE) - 1)]
 
 
 def finished(s: dict | None) -> bool:
@@ -308,19 +316,33 @@ def render_mc(item: dict, s: dict, key: str, section: str, ladder: bool, action:
                 bump(section, "practice_tried")
                 bump(section, "practice_right", int(correct))
                 ss.section_stats[section]["confidences"].append(conf)
+                if not correct:
+                    s["pointer"] = pointer_level(len(ss.cal_shown))
+                    if s["pointer"] == "highlight":
+                        src = tutor.chunk_at(item["source_paragraph"])
+                        go_to(src.section_id, src.para_num)
             log(section, item["question"], action=action or ("practice_answer" if ladder else "quiz_answer"),
-                practice_id=item["id"], check_correct="y" if correct else "n", confidence=conf)
+                practice_id=item["id"], check_correct="y" if correct else "n", confidence=conf,
+                note=f"pointer: {s['pointer']}" if s["pointer"] else "")
             st.rerun()
 
     else:
         source = item.get("source_paragraph", "")
         if s["first_correct"]:
             md(f"**Correct.** This is in [{source}].")
+            go_to_button(source, f"{key}_goto")
+        elif not ladder:
+            md(f"**Not quite.** Reread [{source}].")
+            st.caption(f"Correct answer: {opts[item['answer_index']]}")
+            go_to_button(source, f"{key}_goto")
+        elif s["pointer"] == "section" and s["retry_correct"] is None:
+            # Faded support: the learner finds the paragraph; a missed retry or a hint names it
+            st.markdown(f"**Not quite.** The answer is in section {item['section']}. "
+                        "Find the paragraph that settles it, or open a hint below.")
         else:
-            md(f"**Not quite.** Reread [{source}]" + (", or open a hint below." if ladder else "."))
-            if not ladder:
-                st.caption(f"Correct answer: {opts[item['answer_index']]}")
-        go_to_button(source, f"{key}_goto")
+            lead = "Reread the highlighted" if s["pointer"] == "highlight" else "Reread"
+            md(f"**Not quite.** {lead} [{source}], or open a hint below.")
+            go_to_button(source, f"{key}_goto")
         if ladder and not finished(s):
             again = st.radio("Try again", opts, index=None, key=f"{key}_retry")
             if st.button("Try again", key=f"{key}_retrybtn", disabled=again is None):
@@ -502,6 +524,15 @@ def render_settings():
                 "2. **Ask** anything. Answers come only from the reading; click a citation like "
                 "[6.3 ¶4] to jump to it.\n"
                 "3. **Practice** after you mark the section done: answer first, then hints if you need them.")
+    st.markdown("**How answers are checked**")
+    if tutor.model_name:
+        st.markdown(f"Answers are written by Google's {tutor.model_name}, using only the paragraphs the tutor "
+                    "retrieved. Before you see an answer, a second check compares each sentence with the "
+                    "paragraph it cites and drops any sentence that paragraph doesn't support. Off-topic "
+                    "questions are declined before the AI is called. Click any citation to check it yourself.")
+    else:
+        st.markdown("The AI is off right now, so answers quote the best-matching sentences of the reading "
+                    "directly. Click any citation to see the paragraph.")
     st.divider()
     st.markdown("**Show**")
     for name, (label, _) in PREFS.items():
@@ -579,10 +610,13 @@ def render_chat(sec: str):
     if question:
         t0 = time.time()
         earlier = asked_turns()
-        i = None if focus else tutor.repeat_of(question, [t["question"] for t in earlier])
+        # A repeat is the same question about the same thing: in 💬 mode, the same paragraph
+        here = f"{focus.section_id} ¶{focus.para_num}" if focus else ""
+        same = [t for t in earlier if t["paragraph"] == here]
+        i = tutor.repeat_of(question, [t["question"] for t in same])
         # A repeat brings back the earlier answer, unless the question is now an open practice item
         if i is not None and not tutor.practice_redirect(question, active_practice())[0]:
-            prev = earlier[i]
+            prev = same[i]
             add_turn(sec, question, prev["reply"], focus,
                      repeat_of=dict(section=prev["section"], question=prev["question"]))
             log(sec, question, prev["reply"], action="repeat", note=f"repeats: {prev['question']}")
@@ -609,11 +643,14 @@ def render_practice(sec: str):
         st.markdown("No practice questions for this section.")
         return
     st.caption("Answer first. Hints open after your first try, or if you're stuck.")
+    # One new question at a time: the next opens once this one has a first answer
     for n, it in enumerate(items, 1):
         s = ss.practice.setdefault(it["id"], new_mc_state())
         with st.container(border=True):
             st.caption(f"Question {n} of {len(items)}")
             render_mc(it, s, f"p_{it['id']}", sec, ladder=True)
+        if s["first_correct"] is None:
+            break
 
     results = [dict(confidence=s["confidence"], correct=s["first_correct"], n=n,
                     source_paragraph=it["source_paragraph"])
@@ -660,12 +697,12 @@ def render_calibration(sec: str, cal: dict):
 
 @st.cache_resource
 def load_tutor(live: bool):
-    gen = None
+    gen, model = None, ""
     key = get_secret("GEMINI_API_KEY")
     if live and key:
         model = get_secret("GEMINI_MODEL", "gemini-3.8-flash")
         gen   = T.make_gemini(key, model)
-    return T.Tutor(UNIT_PATH, generate_fn=gen)
+    return T.Tutor(UNIT_PATH, generate_fn=gen, model_name=model)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

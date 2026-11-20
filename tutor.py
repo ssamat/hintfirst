@@ -4,7 +4,7 @@ Pipeline: load unit → chunk by section (with paragraph numbers) → retrieve
 (local TF-IDF, boosted toward the current section, focus paragraph first) →
 safeguards (relevance threshold, vague-question check, practice-question redirect)
 → generate with Gemini (grounding-only prompts) → post-checks (citation check,
-leak check on hints) → fallbacks (cached or extractive replies) when the API is
+support check on direct answers, leak check on hints) → fallbacks (cached or extractive replies) when the API is
 unavailable.
 
 Three roles: answer() is the chat (short direct answers with citations);
@@ -40,6 +40,8 @@ OPTIONS_LISTED      = 3      # a chat question naming this many of an item's opt
 REPEAT_THRESHOLD    = 0.8    # chat question vs an earlier one, char n-gram cosine (or same content words)
 HISTORY_TURNS       = 3      # earlier questions passed to the answer prompt so answers can build on them
 NAMES_SHARE         = 0.66   # a hint containing this share of the correct option's word stems names it
+# Asking words that don't change what a question is about ("define shaping" repeats "what is shaping?")
+REPEAT_FILLER       = {"define", "definition", "meaning", "describe", "whats", "term", "concept", "called"}
 
 
 # ── Data model ────────────────────────────────────────────────────────────────
@@ -520,6 +522,12 @@ DIFFERENT_RULE = """
   Explain it from a different angle: an everyday example, or a contrast with a related idea
   from the passages. Do not reuse sentences or phrasing from EARLIER ANSWER."""
 
+SUPPORT_CHECK_SYSTEM = """You check whether each numbered sentence is supported by the textbook paragraph it cites.
+A sentence is SUPPORTED if everything it claims is stated in or follows directly from its paragraph.
+Applying the paragraph's definition to the learner's own example (a phone, a pet) counts as supported.
+It is UNSUPPORTED if any claim is missing from its paragraph or contradicts it.
+Reply with one line per sentence, in order: the number, then SUPPORTED or UNSUPPORTED (e.g., "1 SUPPORTED")."""
+
 SELF_EXPLAIN_SYSTEM = """You are a tutor giving feedback on a learner's self-explanation of a practice question.
 The learner has already seen the worked answer. You are given the question, the correct answer,
 the option they are explaining, and their one-sentence explanation.
@@ -599,10 +607,12 @@ class Tutor:
         unit_path: Path,
         generate_fn=None,
         cache_path: Path | None = None,
+        model_name: str = "",
     ):
         self.unit_title, self.chunks = load_unit(unit_path)
         self.retriever   = Retriever(self.chunks)
         self.generate_fn = generate_fn
+        self.model_name  = model_name   # shown to learners in "How answers are checked"
         cache_path       = cache_path or DATA / "cached_answers.json"
         self.cache       = json.loads(cache_path.read_text()) if cache_path.exists() else {}
 
@@ -672,8 +682,48 @@ class Tutor:
         if "OUT_OF_SCOPE" in text:
             return Reply("refused", REFUSAL, hits, top, note="model said passages don't cover it")
         text, notes = tidy_answer(text, passages, strict=strict)
+        if strict:   # examples and analogies invent everyday situations on purpose, so only direct answers
+            text, support_note = self.check_support(text)
+            if text is None:
+                return self._answer_fallback(question, hits, top, support_note)
+            notes.append(support_note)
         notes = [n for n in [scope_note, *notes] if n]
         return Reply("answered", text, hits, top, "; ".join(notes) or "passed all checks")
+
+    def check_support(self, text: str) -> tuple[str | None, str]:
+        """Second pass against hallucination: Gemini judges each cited sentence against the
+        paragraph it cites, and unsupported sentences are dropped. Returns (text, note); text
+        is None when no claim survives. Fails open (keeps the answer) if the check can't run."""
+        sents = split_sentences(text)
+        claims, blocks = [], []
+        for i, s in enumerate(sents):
+            if s.rstrip().endswith("?"):
+                continue
+            try:
+                paras = [self.chunk_at(f"{sec} ¶{n}") for sec, n in parse_citations(s) if n]
+            except StopIteration:
+                continue
+            if paras:
+                claims.append(i)
+                claim = re.sub(r"\s+([.!,;])", r"\1", CITE_RE.sub("", s)).strip()
+                blocks.append(f"SENTENCE {len(claims)}: {claim}\n"
+                              f"PARAGRAPH {len(claims)}:\n" + "\n".join(p.text for p in paras))
+        if not claims or self.generate_fn is None:
+            return text, ""
+        try:
+            verdict = self.generate_fn(SUPPORT_CHECK_SYSTEM, "\n\n".join(blocks)).upper()
+        except Exception as e:
+            return text, f"support check skipped: {type(e).__name__}"
+        judged = dict(re.findall(r"(?m)^\W*(\d+)\W+(UNSUPPORTED|SUPPORTED)\b", verdict))
+        if any(str(k) not in judged for k in range(1, len(claims) + 1)):
+            return text, "support check unreadable; kept answer"
+        drop = {claims[int(k) - 1] for k, v in judged.items() if v == "UNSUPPORTED" and int(k) <= len(claims)}
+        if not drop:
+            return text, "support check passed"
+        if len(drop) == len(claims):
+            return None, f"support check: all {len(drop)} claim(s) unsupported"
+        return (" ".join(s for i, s in enumerate(sents) if i not in drop),
+                f"support check: removed {len(drop)} unsupported sentence(s)")
 
     def _answer_fallback(self, question: str, hits: list[tuple[Chunk, float]], top: float, why: str) -> Reply:
         cached = self.cache.get(question.lower().strip(" ?!."), {}).get("answer")
@@ -699,7 +749,11 @@ class Tutor:
                 why = "model said passages don't cover it" if "OUT_OF_SCOPE" in text else ""
             if text and not why:
                 text, notes = tidy_answer(text, passages)
-                return Reply("answered", text, hits, 1.0, "; ".join(["explained differently", *notes]))
+                text, support_note = self.check_support(text)
+                if text is not None:
+                    return Reply("answered", text, hits, 1.0,
+                                 "; ".join(n for n in ["explained differently", *notes, support_note] if n))
+                why = support_note
         else:
             why = "no API key"
         cited = {(s, n) for s, n in parse_citations(earlier)}
@@ -795,11 +849,14 @@ class Tutor:
     def repeat_of(self, question: str, earlier: list[str]) -> int | None:
         """Index of an earlier question this one repeats (same content words, or a near-copy
         such as a misspelling), else None."""
-        words = set(content_words(question))
+        def key(q: str) -> set[str]:
+            return {stem(w) for w in content_words(q) if w not in REPEAT_FILLER}
+
+        words = key(question)
         if not earlier or not words:
             return None
         for i, e in enumerate(earlier):
-            if set(content_words(e)) == words:
+            if key(e) == words:
                 return i
         v = self.retriever.char_vec
         sim = cosine_similarity(v.transform([question]), v.transform(earlier))[0]
