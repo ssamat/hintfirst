@@ -19,7 +19,6 @@ import html
 import os
 import random
 import re
-import threading
 import time
 import uuid
 from contextlib import contextmanager
@@ -141,34 +140,6 @@ def write_log(row: dict):
         if new_file:
             w.writeheader()
         w.writerow(row)
-    ws = log_sheet()
-    if ws is not None:   # in the background, so a slow Sheets call never holds up the learner
-        threading.Thread(target=append_to_sheet, args=(ws, [str(row.get(f, "")) for f in LOG_FIELDS]),
-                         daemon=True).start()
-
-
-@st.cache_resource
-def log_sheet():
-    """The Google Sheet that mirrors logs.csv, or None. Streamlit Community Cloud wipes local
-    files when the app restarts, so a deployed pilot needs a copy that lasts."""
-    url, creds = get_secret("LOG_SHEET_URL"), get_secret("gcp_service_account")
-    if not url or not creds:
-        return None
-    try:
-        import gspread
-        ws = gspread.service_account_from_dict(dict(creds)).open_by_url(url).sheet1
-        if not ws.row_values(1):
-            ws.append_row(LOG_FIELDS)
-        return ws
-    except Exception:
-        return None
-
-
-def append_to_sheet(ws, values: list[str]):
-    try:
-        ws.append_row(values, value_input_option="RAW")
-    except Exception:
-        pass   # logs.csv still has the row
 
 
 def log(section: str, question: str, reply: T.Reply | None = None, latency: float = 0.0, **extra):
@@ -794,7 +765,6 @@ if admin:
             st.warning("Sample text — load data/unit.md")
         if LOG_PATH.exists():
             st.download_button("Download log", LOG_PATH.read_bytes(), "logs.csv", "text/csv")
-        st.caption("Log copy: Google Sheet" if log_sheet() else "Log copy: none (logs.csv resets when the app restarts)")
         st.caption(f"AI uses this session: {ss.ai_uses} (learners are limited to {AI_LIMIT})")
         if st.button("Clear session"):
             ss.turns, ss.practice, ss.done, ss.section_stats, ss.focus = {}, {}, set(), {}, None
